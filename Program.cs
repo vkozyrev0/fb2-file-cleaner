@@ -43,11 +43,6 @@ namespace Fb2CleanerApp
 
     internal class Program
     {
-        /*
-            @"c:\Users\Viktor Kozyrev\Downloads\Telegram Desktop\"
-            @"c:\Users\Viktor Kozyrev\Documents\Calibre Library\"
-        */
-
         #region Static Methods
 
         private static string HtmlEscapesToXml(string text)
