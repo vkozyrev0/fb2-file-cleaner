@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Fb2CleanerApp.Models;
 
 namespace Fb2CleanerApp.Workers
 {
@@ -19,9 +20,9 @@ namespace Fb2CleanerApp.Workers
             _file = file;
         }
         private static readonly HashSet<string> Exclude = new() { "&amp;", "&apos;", "&quot;", "&gt;", "&lt;" };
-        private static readonly Regex ExcludeSearchPattern = new Regex(@"&[\d\w]+?;", RegexOptions.Compiled);
+        private static readonly Regex ExcludeSearchPattern = new(@"&[\d\w]+?;", RegexOptions.Compiled);
 
-        private static string HtmlEscapesToXml(string text, List<Match> matches)
+        private static string HtmlEscapesToXml(string text, IEnumerable<Match> matches)
         {
             foreach (var match in matches)
             {
@@ -43,7 +44,7 @@ namespace Fb2CleanerApp.Workers
             _encoding = charsetDetector.Charset != null ? Encoding.GetEncoding(charsetDetector.Charset) : Encoding.UTF8;
         }
 
-        public void CorrectNamespaces()
+        public async Task CorrectNamespaces()
         {
             const string xlinkNamespace = @"xmlns:xlink=""http://www.w3.org/1999/xlink""";
             const string xlink = "<a xlink:href=";
@@ -60,6 +61,7 @@ namespace Fb2CleanerApp.Workers
             var position = match.Groups[1].Index + match.Groups[1].Length;
             _text = _text.Insert(position, " " + xlinkNamespace);
             _dirty = true;
+            await Statistics.IncrementFixedFilesCount();
         }
 
         public async Task ReadFromFile()
@@ -83,17 +85,7 @@ namespace Fb2CleanerApp.Workers
             }
         }
 
-        //public void FixHrefLinkIssue()
-        //{
-        //    const string badLink = "<a xlink:href=";
-        //    const string goodLink = "<a href=";
-
-        //    if (!_text.Contains(badLink)) return;
-        //    _text = _text.Replace(badLink, goodLink);
-        //    _dirty = true;
-        //}
-
-        public void FixEmphasisTagIssue()
+        public async Task FixEmphasisTagIssue()
         {
             const string badStart = "<p><emphasis><emphasis></emphasis></p>";
             const string badEnd = "<p><emphasis></emphasis></emphasis></p>";
@@ -105,8 +97,9 @@ namespace Fb2CleanerApp.Workers
                 .Replace(badStart, goodStart)
                 .Replace(badEnd, goodEnd);
             _dirty = true;
+            await Statistics.IncrementFixedFilesCount();
         }
-        public void FixHtmlEscapeCharacterIssue()
+        public async Task FixHtmlEscapeCharacterIssue()
         {
             var matches = ExcludeSearchPattern
                 .Matches(_text)
@@ -116,6 +109,7 @@ namespace Fb2CleanerApp.Workers
             if (matches.Count == 0) return;
             _text = HtmlEscapesToXml(_text, matches);
             _dirty = true;
+            await Statistics.IncrementFixedFilesCount();
         }
     }
 }

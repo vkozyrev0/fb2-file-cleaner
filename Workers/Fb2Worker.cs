@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,6 +8,7 @@ using Fb2.Document;
 using Fb2.Document.Models;
 using Fb2.Document.Models.Base;
 using Fb2CleanerApp.Models;
+using Ionic.Zip;
 
 namespace Fb2CleanerApp.Workers
 {
@@ -105,8 +105,8 @@ namespace Fb2CleanerApp.Workers
                     Zipped = false,
                     Document = document
                 };
-                Fb2Worker.ParseTitleInfo(bookSummary, bookSummary.Document.Title.Content);
-                Fb2Worker.ParseBodyInfo(bookSummary, bookSummary.Document.Bodies
+                ParseTitleInfo(bookSummary, bookSummary.Document.Title.Content);
+                ParseBodyInfo(bookSummary, bookSummary.Document.Bodies
                     .SelectMany(x => x.Content)
                     .ToList());
             }
@@ -125,22 +125,44 @@ namespace Fb2CleanerApp.Workers
             return bookSummary;
         }
 
+        private static Encoding GuessEncoding(Stream stream)
+        {
+            var charsetDetector = new Ude.CharsetDetector();
+            charsetDetector.Feed(stream);
+            charsetDetector.DataEnd();
+            return charsetDetector.Charset != null ? Encoding.GetEncoding(charsetDetector.Charset) : Encoding.UTF8;
+        }
+
         public async Task<List<string>> ExtractZipped()
         {
             var files = new List<string>();
             var prefix = Path.GetFileNameWithoutExtension(_file) + "_";
-            using var archive = ZipFile.Open(_file ?? string.Empty, ZipArchiveMode.Read, Encoding.UTF8);
-            foreach (var entry in archive.Entries.Where(x => x.FullName.EndsWith(".fb2")))
+            using var archive = ZipFile.Read(_file ?? string.Empty, new ReadOptions
             {
-                var file = Path.Combine(Path.GetDirectoryName(_file) ?? string.Empty, prefix + _file);
-                using var reader = new StreamReader(entry.Open());
+                Encoding = Encoding.GetEncoding(ArgumentWorker.EncodingCodePage)
+            });
+            archive.AlternateEncoding = Encoding.UTF8;
+            archive.AlternateEncodingUsage = ZipOption.AsNecessary;
+            var entries = archive.Entries
+                .Where(x => string.Compare(Path.GetExtension(x.FileName), ".fb2", StringComparison.InvariantCulture) ==
+                0).ToList();
+            foreach (var entry in entries)
+            {
+                var file = Path.Combine(Path.GetDirectoryName(_file) ?? string.Empty, prefix + entry.FileName);
+                Encoding encoding;
+                await using (var encodingStream = entry.OpenReader())
+                {
+                    encoding = GuessEncoding(encodingStream);
+                }
+                await using var stream = entry.OpenReader();
+                using var reader = new StreamReader(stream, encoding);
                 var text = await reader.ReadToEndAsync();
                 if (File.Exists(file))
                 {
                     File.SetAttributes(file, FileAttributes.Normal);
                     File.Delete(file);
                 }
-                await File.WriteAllTextAsync(file, text);
+                await File.WriteAllTextAsync(file, text, encoding);
                 files.Add(file);
             }
 
