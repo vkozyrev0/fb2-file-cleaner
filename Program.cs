@@ -206,15 +206,26 @@ namespace Fb2CleanerApp
                             Console.ForegroundColor = ConsoleColor.DarkGray;
                             Console.WriteLine(seriesGroup.ListOfAuthors);
 
+                            var last = seriesGroup.List.Last();
                             foreach (var bookSummary in seriesGroup.List)
                             {
                                 Console.Write("\t");
-                                Console.ForegroundColor = ConsoleColor.Cyan;
-                                Console.Write(bookSummary.LastChapterWithNumber);
+                                if (last == bookSummary)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    Console.Write(bookSummary.LastChapterWithNumber);
 
-                                Console.Write(" ");
-                                Console.ForegroundColor = ConsoleColor.DarkGray;
-                                Console.WriteLine(bookSummary.Origin);
+                                    Console.Write(" ");
+                                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                                    Console.WriteLine(bookSummary.Origin);
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                                    Console.Write(bookSummary.LastChapterWithNumber);
+                                    Console.Write(" ");
+                                    Console.WriteLine(bookSummary.Origin);
+                                }
                             }
                         }
 
@@ -264,19 +275,32 @@ namespace Fb2CleanerApp
                             Console.ForegroundColor = ConsoleColor.DarkGray;
                             Console.WriteLine(seriesGroup.ListOfAuthors);
 
+                            var last = seriesGroup.List.Last();
                             foreach (var bookSummary in seriesGroup.List)
                             {
                                 Console.Write("\t");
-                                Console.ForegroundColor = ConsoleColor.DarkCyan;
-                                Console.Write(bookSummary.Title);
+                                if (last == bookSummary)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.DarkCyan;
+                                    Console.Write(bookSummary.Title);
 
-                                Console.Write(" ");
-                                Console.ForegroundColor = ConsoleColor.Cyan;
-                                Console.Write(bookSummary.LastChapterWithNumber);
+                                    Console.Write(" ");
+                                    Console.ForegroundColor = ConsoleColor.Cyan;
+                                    Console.Write(bookSummary.LastChapterWithNumber);
 
-                                Console.Write(" ");
-                                Console.ForegroundColor = ConsoleColor.DarkGray;
-                                Console.WriteLine(bookSummary.Origin);
+                                    Console.Write(" ");
+                                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                                    Console.WriteLine(bookSummary.Origin);
+                                }
+                                else
+                                {
+                                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                                    Console.Write(bookSummary.Title);
+                                    Console.Write(" ");
+                                    Console.Write(bookSummary.LastChapterWithNumber);
+                                    Console.Write(" ");
+                                    Console.WriteLine(bookSummary.Origin);
+                                }
                             }
                         }
 
