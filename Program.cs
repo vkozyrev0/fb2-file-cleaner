@@ -138,6 +138,7 @@ namespace Fb2CleanerApp
                                 var errorWorker = new ErrorWorker(file);
                                 await errorWorker.ReadFromFile();
                                 await errorWorker.FixEmphasisTagIssue();
+                                await errorWorker.FixExclamationTagIssue();
                                 await errorWorker.CorrectNamespaces();
                                 await errorWorker.FixHtmlEscapeCharacterIssue();
                                 await errorWorker.SaveToFile();
