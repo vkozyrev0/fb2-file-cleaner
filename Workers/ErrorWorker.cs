@@ -84,7 +84,6 @@ namespace Fb2CleanerApp.Workers
                 _dirty = false;
             }
         }
-
         public async Task FixEmphasisTagIssue()
         {
             const string badStart = "<p><emphasis><emphasis></emphasis></p>";
@@ -96,6 +95,17 @@ namespace Fb2CleanerApp.Workers
             _text = _text
                 .Replace(badStart, goodStart)
                 .Replace(badEnd, goodEnd);
+            _dirty = true;
+            await Statistics.IncrementFixedFilesCount();
+        }
+        public async Task FixExclamationTagIssue()
+        {
+            const string badStart = "<!!!>";
+            const string goodStart = "!!!";
+
+            if (!_text.Contains(badStart)) return;
+            _text = _text
+                .Replace(badStart, goodStart);
             _dirty = true;
             await Statistics.IncrementFixedFilesCount();
         }
