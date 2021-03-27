@@ -133,17 +133,6 @@ namespace Fb2CleanerApp
                                 await throttler.WaitAsync();
                                 Console.WriteLine($"[{num}/{fileCount}] '{file}'");
 
-                                // fixes some fb2 file error.
-
-                                var errorWorker = new ErrorWorker(file);
-                                await errorWorker.ReadFromFile();
-                                await errorWorker.FixEmphasisTagIssue();
-                                await errorWorker.CorrectNamespaces();
-                                await errorWorker.FixHtmlEscapeCharacterIssue();
-                                await errorWorker.SaveToFile();
-
-                                // processes fb2 file.
-
                                 var fb2 = new Fb2Worker(file);
                                 bookSummaries.Add(await fb2.Parse());
                             }
