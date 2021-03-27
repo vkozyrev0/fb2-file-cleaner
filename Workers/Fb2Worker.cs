@@ -4,18 +4,16 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Fb2.Document;
-using Fb2.Document.Models;
-using Fb2.Document.Models.Base;
 using Fb2CleanerApp.Models;
 using Ionic.Zip;
+using SoftCircuits.HtmlMonkey;
 
 namespace Fb2CleanerApp.Workers
 {
     public class Fb2Worker
     {
         private readonly string _file;
-
+        private Encoding _encoding;
 
         public Fb2Worker(string file)
         {
@@ -24,66 +22,112 @@ namespace Fb2CleanerApp.Workers
 
         #region Static Methods
 
-        private static void ParseTitleInfo(BookSummary bookSummary, IEnumerable<Fb2Node> nodes)
+        private void GuessEncoding()
         {
-            foreach (var node in nodes)
-            {
-                switch (node)
+            using var fs = File.OpenRead(_file);
+            var charsetDetector = new Ude.CharsetDetector();
+            charsetDetector.Feed(fs);
+            charsetDetector.DataEnd();
+            _encoding = charsetDetector.Charset != null ? Encoding.GetEncoding(charsetDetector.Charset) : Encoding.UTF8;
+        }
+
+        private static void ParseTitleInfo(BookSummary bookSummary)
+        {
+            var document = bookSummary.Document;
+
+            var genres = document
+                .Find("genre")
+                .Where(x => x.ParentNode != null && x.ParentNode.TagName == "title-info")
+                .Select(x => x.Text)
+                .ToList();
+            bookSummary.Genres.AddRange(genres);
+
+            var authors = document
+                .Find("author")
+                .Where(x => x.ParentNode != null && x.ParentNode.TagName == "title-info")
+                .Select(x => new
                 {
-                    case BookGenre genre:
-                        bookSummary.Genres.Add(genre.ToString());
-                        break;
-                    case Author author:
-                        bookSummary.Authors.Add(author);
-                        var firstName = author.Content.FirstOrDefault(x => x is FirstName)?.ToString() ?? string.Empty;
-                        var lastName = author.Content.FirstOrDefault(x => x is LastName)?.ToString() ?? string.Empty;
-                        var name = string.Empty;
-                        if (!string.IsNullOrWhiteSpace(firstName))
+                    FirstName = x.Children.FirstOrDefault(y => y is HtmlElementNode { TagName: "first-name" })?.Text,
+                    LastName = x.Children.FirstOrDefault(y => y is HtmlElementNode { TagName: "last-name" })?.Text,
+                    MiddleName = x.Children.FirstOrDefault(y => y is HtmlElementNode { TagName: "middle-name" })?.Text,
+                }).ToList();
+
+            var sequence = document
+                .Find("sequence")
+                .FirstOrDefault(x => x.ParentNode != null && x.ParentNode.TagName == "title-info");
+
+            if (sequence != null)
+            {
+                if (sequence.Attributes.TryGetValue("name", out var sequenceName))
+                {
+                    bookSummary.SeriesName = sequenceName.Value;
+
+                    // special case of sequence name not being escaped properly
+
+                    var nameParts = new List<string>();
+                    if (string.IsNullOrEmpty(bookSummary.SeriesName))
+                    {
+                        nameParts.AddRange(from t in sequence.Attributes where t.Value == null select t.Name);
+                        if (nameParts.Count > 0 && nameParts.Last() == "\"\"")
                         {
-                            name = firstName;
+                            nameParts.RemoveAt(nameParts.Count - 1);
                         }
 
-                        if (!string.IsNullOrWhiteSpace(lastName))
-                        {
-                            if (!string.IsNullOrEmpty(name))
-                            {
-                                name += " ";
-                            }
-
-                            name += lastName;
-                        }
-
-                        bookSummary.AuthorNames.Add(name);
-                        break;
-                    case BookTitle title:
-                        bookSummary.Title = title.ToString();
-                        break;
-                    case SequenceInfo seq:
-                        bookSummary.SeriesName = seq.Attributes["name"];
-                        var number = 0;
-                        if (seq.Attributes.ContainsKey("number"))
-                        {
-                            int.TryParse(seq.Attributes["number"], out number);
-                        }
-
-                        bookSummary.SeriesNumber = number;
-                        break;
+                        bookSummary.SeriesName = "\"" + string.Join(" ", nameParts) + "\"";
+                    }
                 }
+                if (sequence.Attributes.TryGetValue("number", out var sequenceNumber))
+                {
+                    bookSummary.SeriesNumber = int.Parse(string.IsNullOrEmpty(sequenceNumber.Value) ? "0" : sequenceNumber.Value);
+                }
+
+            }
+
+            bookSummary.Title = document
+                .Find("title, book-title")
+                .FirstOrDefault(x => x.ParentNode != null && x.ParentNode.TagName == "title-info")
+                ?.Text;
+
+            foreach (var node in authors)
+            {
+                var nameParts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(node.FirstName))
+                {
+                    nameParts.Add(node.FirstName);
+                }
+                if (!string.IsNullOrWhiteSpace(node.MiddleName))
+                {
+                    nameParts.Add(node.MiddleName);
+                }
+                if (!string.IsNullOrWhiteSpace(node.LastName))
+                {
+                    nameParts.Add(node.LastName);
+                }
+                bookSummary.AuthorNames.Add(string.Join(" ", nameParts));
             }
         }
 
-        private static void ParseBodyInfo(BookSummary bookSummary, IEnumerable<Fb2Node> nodes)
+        private static void ParseBodyInfo(BookSummary bookSummary)
         {
-            foreach (var node in nodes)
+            var document = bookSummary.Document;
+            var titles = document
+                .Find("title")
+                .Where(x => x.ParentNode?.ParentNode != null && x.ParentNode != null && x.ParentNode.TagName == "section" && x.ParentNode.ParentNode.TagName == "body")
+                .ToList();
+            foreach (var title in titles)
             {
-                switch (node)
+                if (title.Children.Count == 0)
                 {
-                    case BodySection section:
-                        ParseBodyInfo(bookSummary, section.Content);
-                        break;
-                    case Title title:
-                        bookSummary.Chapters.Add(title.ToString().Trim('\r').Trim('\n'));
-                        break;
+                    bookSummary.Chapters.Add(title.Text);
+                }
+                else
+                {
+                    var parts = title.Children.Select(line => line.Text).ToList();
+                    parts = parts
+                        .Select(x => x.Trim(' ').Trim('\r').Trim('\n'))
+                        .Where(x => !string.IsNullOrEmpty(x))
+                        .ToList();
+                    bookSummary.Chapters.Add(string.Join(" | ", parts));
                 }
             }
         }
@@ -95,9 +139,10 @@ namespace Fb2CleanerApp.Workers
             BookSummary bookSummary;
             try
             {
-                var document = new Fb2Document();
-                await using var stream = File.OpenRead(_file);
-                await document.LoadAsync(stream);
+                GuessEncoding();
+                var text = await File.ReadAllTextAsync(_file, _encoding);
+
+                var document = HtmlDocument.FromHtml(text);
                 bookSummary = new BookSummary
                 {
                     Origin = _file,
@@ -105,10 +150,8 @@ namespace Fb2CleanerApp.Workers
                     Zipped = false,
                     Document = document
                 };
-                ParseTitleInfo(bookSummary, bookSummary.Document.Title.Content);
-                ParseBodyInfo(bookSummary, bookSummary.Document.Bodies
-                    .SelectMany(x => x.Content)
-                    .ToList());
+                ParseTitleInfo(bookSummary);
+                ParseBodyInfo(bookSummary);
             }
             catch (Exception x)
             {
